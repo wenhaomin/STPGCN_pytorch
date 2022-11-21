@@ -313,13 +313,13 @@ def train(model, data_loader, optimizer, loss_function, epoch, metric, config):
         optimizer.step()
         time_lst.append((timer() - time_start))
                         
-        y_true.append(target.asnumpy())
-        y_pred.append(output.asnumpy())
+        y_true.append(target.cpu().numpy())
+        y_pred.append(output.detach().cpu().numpy())
 
         if i == 0 and epoch==0:
             num_of_parameters = 0
-            for param_name, param_value in model.collect_params().items():
-                num_of_parameters += np.prod(param_value.shape)
+            for p in model.parameters():
+                num_of_parameters += p.numel()
             print('\nNum_of_parameters:', num_of_parameters)
             print("Epoch | Tra: MAE RMSE MAPE Time | Val: MAE RMSE MAPE Time | Tes:  MAE RMSE MAPE Time")
                 
@@ -351,9 +351,9 @@ def evals(model, data_loader, epoch, metric, config, mode='Test', end=''):
         time_start = timer()
         output = model(feature, pos_w, pos_d)
         time_lst.append((timer() - time_start))
-        
-        y_true.append(target.asnumpy())
-        y_pred.append(output.asnumpy())
+
+        y_true.append(target.cpu().numpy())
+        y_pred.append(output.detach().cpu().numpy())
         
     y_true = np.concatenate(y_true,axis=0)
     y_pred = np.concatenate(y_pred,axis=0)    
