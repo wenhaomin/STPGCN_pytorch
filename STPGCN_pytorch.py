@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Oct  7 22:30:55 2021
-
-
 @author: Haomin Wen
-
 """
 
 import numpy as np
@@ -21,18 +17,10 @@ class STPGConv(nn.Module):
         self.V = config.V
         self.t_size = config.t_size
 
-
-        # self.W = nn.Parameter(torch.randn(self.C, self.C*2))
-        # self.b = nn.Parameter(torch.randn(1, self.C*2))
-
         self.x_proj = nn.Linear(self.C, self.C * 2).to(config.device)
         self.se_proj = nn.Linear(self.d, self.C * 2, bias=False).to(config.device)
         self.te_proj = nn.Linear(self.d, self.C * 2, bias=False).to(config.device)
-
-
-        # self.Ws = nn.Parameter(torch.randn(self.d, self.C*2)).to(config.device)
-        # self.Wt = nn.Parameter(torch.randn(self.d, self.C*2)).to(config.device)
-        self.ln  = nn.LayerNorm(self.C * 2).to(config.device) #todo: add back the layer norm
+        self.ln  = nn.LayerNorm(self.C * 2).to(config.device)
 
     def forward(self, x, S, sape, tape):
         # x:B,t,V,C
@@ -46,7 +34,7 @@ class STPGConv(nn.Module):
         # B,(V,tV x tV,C) -> B,V,C
         x = torch.bmm(S, x)
         # B,V,C -> B,V,2C
-        x = self.x_proj(x) # todo: ok
+        x = self.x_proj(x)
 
         # STPGAU
         # V,d x d,2C -> V,2C
@@ -54,10 +42,10 @@ class STPGConv(nn.Module):
         # B,1,1,d -> B,1,1,d -> B,1,d
         TE = tape.reshape((-1, 1, self.d))
         # B,1,d x d,2C -> B,1,2C
-        TE = self.te_proj(TE) #todo:ok
+        TE = self.te_proj(TE)
         x += SE  # x +=  SE
         x += TE
-        x = self.ln(x)  # todo:ok todo: add back the layernorm, 这里的layer norm是作用在哪些维度上？
+        x = self.ln(x)
         lhs, rhs = torch.chunk(x, chunks=2, dim=-1)
         return lhs * F.sigmoid(rhs)
 
@@ -72,16 +60,11 @@ class Gaussian_component(nn.Module):
 
     def forward(self, emb):
         """
-        todo: add the shape description
-        emb: ()
-        return ()
+        emb:
+        return
         """
-        # -1/2(emb - mu)**2/sigma**2
-        # e = -0.5 * F.power(F.broadcast_sub(emb, mu),2)
-
         e =  -0.5 * torch.pow(emb -  self.mu.expand_as(emb),2)
         e =  e * torch.pow(self.inv_sigma, 2).expand_as(emb)
-
         e = torch.sum(e, dim=-1, keepdim=True)
         return e
 
@@ -98,7 +81,6 @@ class STPRI(nn.Module):
         self.gc_lst = []
         for i in range(6):
             self.gc_lst.append(Gaussian_component(config))
-            # self.register_child(self.gc_lst[-1])
 
     def forward(self, sape, tape_i, tape_j, srpe, trpe):
         """
@@ -110,46 +92,47 @@ class STPRI(nn.Module):
         """  
 
         B = tape_j.shape[0]
-
-        # V,d -> V,1 #todo:ok
+        # V,d -> V,1
         sapei = self.gc_lst[0](sape)
+
         # V,d -> V,1 -> 1,V
-        sapej = self.gc_lst[1](sape) #todo:ok
-        sapej = sapej.transpose(1,0) #todo:ok
+        sapej = self.gc_lst[1](sape)
+        sapej = sapej.transpose(1,0)
 
         # V,1 + 1,V -> V,V
-        gaussian = sapei.expand(self.V, self.V) + sapej.expand(self.V, self.V) #todo:ok
-
+        gaussian = sapei.expand(self.V, self.V) + sapej.expand(self.V, self.V)
 
         # B,1,1,d -> B,1,1,1
-        tapei = self.gc_lst[2](tape_i) #todo:ok
+        tapei = self.gc_lst[2](tape_i)
+
         # B,1,1,1 + V,V -> B,1,V,V
-        gaussian = gaussian + tapei #todo:ok
+        gaussian = gaussian + tapei
+
         # B,t,1,d -> B,t,1,1
         tapej = self.gc_lst[3](tape_j)
+
         #  B,1,V,V + B,t,1,1  -> B,t,V,V
         gaussian = gaussian.expand(B,self.t_size,self.V, self.V) + tapej.expand(B,self.t_size,self.V, self.V)
         
         # V,V,d -> V,V,1 -> V,V
-        srpe =  self.gc_lst[4](srpe).squeeze() #todo:ok
+        srpe =  self.gc_lst[4](srpe).squeeze()
+
         # B,t,V,V + V,V -> B,t,V,V
         gaussian =  gaussian + srpe
 
-        
         # t,1,d -> t,1,1
-        trpe = self.gc_lst[5](trpe) #todo:ok
+        trpe = self.gc_lst[5](trpe)
+
         # B,t,V,V + t,1,1 -> B,t,V,V
-        gaussian += trpe.unsqueeze(0).expand_as(gaussian) #todo:ok
+        gaussian += trpe.unsqueeze(0).expand_as(gaussian)
         
         # B,t,V,V -> B,tV,V -> B,V,tV
-        # gaussian = F.reshape(gaussian, (-1,self.t_size*self.V,self.V))
-        # gaussian = F.transpose(gaussian,(0,2,1))
-        gaussian = gaussian.reshape(-1, self.t_size*self.V, self.V) #todo:ok
-        gaussian = gaussian.transpose(2, 1) #todo:ok
+        gaussian = gaussian.reshape(-1, self.t_size*self.V, self.V)
+        gaussian = gaussian.transpose(2, 1)
 
         return torch.exp(gaussian)
 
-        # return F.exp(gaussian)
+
     
 
 
@@ -169,7 +152,7 @@ class GFS(nn.Module):
     """gated feature selection module"""
     def __init__(self, config):
         super(GFS, self).__init__()
-        self.fc  = nn.Conv2d(in_channels=config.T, out_channels=config.C, kernel_size=(1, config.C)).to(config.device)#todo: has problem, #todo@:shixiong
+        self.fc  = nn.Conv2d(in_channels=config.T, out_channels=config.C, kernel_size=(1, config.C)).to(config.device)
         self.glu = GLU(config.C).to(config.device)
             
     def forward(self,  x):
@@ -184,7 +167,6 @@ class GFS(nn.Module):
 
 
 
-
 class OutputLayer(nn.Module):
     def __init__(self, config, **kwargs):
         super(OutputLayer, self).__init__(**kwargs)
@@ -192,15 +174,12 @@ class OutputLayer(nn.Module):
         self.D = config.num_features
         self.P = config.num_prediction
         self.C = config.C
-        self.fc = nn.Conv2d(in_channels=self.C*(config.L+1), out_channels=self.P*self.D, kernel_size=(1, 1)) #todo@:shixiong
+        self.fc = nn.Conv2d(in_channels=self.C*(config.L+1), out_channels=self.P*self.D, kernel_size=(1, 1))
 
     def forward(self, x):
         # x:B,C',V,1 -> B,PD,V,1 -> B,P,V,D
         x = self.fc(x)
         if self.D>1:
-            # x = F.reshape(x,(0,self.P,self.D,self.V))
-            # x = F.transpose(x, (0,1,3,2))
-            #
             x = x.reshape((0,self.P,self.D,self.V))
             x = x.transpose( (0,1,3,2))
         return x
@@ -216,7 +195,6 @@ class InputLayer(nn.Module):
         x = self.fc(x)
         return x
         # x:B,T,V,D -> B,T,V,C
-
 
 
 
@@ -242,13 +220,10 @@ class STPGCNs(nn.Module):
         self.fs_lst = []
         for i in range(self.L):
             self.ri_lst.append(STPRI(self.config))
-            # self.register_child(self.ri_lst[-1])
 
             self.gc_lst.append(STPGConv(self.config))
-            # self.register_child(self.gc_lst[-1])
 
             self.fs_lst.append(GFS(self.config))
-            # self.register_child(self.fs_lst[-1])
 
         self.glu = GLU(self.C*4)
         self.output_layer = OutputLayer(self.config)
@@ -266,41 +241,41 @@ class STPGCNs(nn.Module):
         """          
         
         # x:B,T,V,D -> B,T,V,C
-        x = self.input_layer(x) #todo:ok
+        x = self.input_layer(x)
+
         # padding: B,T+beta,1,d
         tape_pad = torch.cat((zeros_tape, tape), dim=1)
 
-        skip = [self.fs(x)] #todo: add back
-        # skip = []
+        skip = [self.fs(x)]
         for i in range(self.L):
             # padding: B,T+beta,V,C
-            x = torch.cat((zeros_x, x), dim=1) #todo:ok
+            x = torch.cat((zeros_x, x), dim=1)
             
             xs = []
             for t in range(self.T):
                 # B,t,V,C
-                xj = x[:,t:t+self.t_size,:,:] #todo: ok
+                xj = x[:,t:t+self.t_size,:,:]
+
                 # B,1,1,d
-                tape_i = tape[:,t:t+1,:,:] #todo: ok
+                tape_i = tape[:,t:t+1,:,:]
+
                 # B,t,1,d
-                tape_j = tape_pad[:,t:t+self.t_size,:,:] #todo: ok
+                tape_j = tape_pad[:,t:t+self.t_size,:,:]
                 
                 # Inferring spatial-temporal relations
-                S = self.ri_lst[i](sape, tape_i, tape_j, srpe, trpe) #todo: ok
-                # S = F.broadcast_mul(S,range_mask)
-                S = S * range_mask #todo: ok
+                S = self.ri_lst[i](sape, tape_i, tape_j, srpe, trpe)
+                S = S * range_mask
                 
                 # STPGConv
-                xs.append(self.gc_lst[i](xj, S, sape, tape_i)) #todo: ok
+                xs.append(self.gc_lst[i](xj, S, sape, tape_i))
                 
-            # x = torch.stack(*xs, dim=1)
             x = torch.stack(xs, dim=1)
+
             #B,T,V,C->B,C',V,1
-            skip.append(self.fs_lst[i](x)) #todo: ok
+            skip.append(self.fs_lst[i](x))
         
         # B,(L+1)*C,V,1
-        x = torch.cat(skip,dim=1)  #todo: ok
-        
+        x = torch.cat(skip,dim=1)
 
         # B,(L+1)*C,V,1 ->  B,(L+1)*C,V,1
         x = self.glu(x)
@@ -315,7 +290,6 @@ class SAPE(nn.Module):
     def __init__(self, config, **kwargs):
         super(SAPE, self).__init__(**kwargs)
 
-        # self.sape = self.params.get('SE', shape=(config.V, config.d))
         self.sape = nn.Embedding(config.V, config.d)
             
     def forward(self):
@@ -344,9 +318,7 @@ class SRPE(nn.Module):
     def __init__(self, config, **kwargs):
         super(SRPE, self).__init__(**kwargs)
 
-
         self.SDist = torch.from_numpy(config.spatial_distance).to(config.device).long().squeeze(-1)
-
         self.srpe = nn.Embedding(config.alpha+1, config.d)
             
     def forward(self):
@@ -357,12 +329,8 @@ class TRPE(nn.Module):
     def __init__(self, config, **kwargs):
         super(TRPE, self).__init__(**kwargs)
 
-
-        # self.TDist = torch.Tensor(np.expand_dims(range(config.t_size),-1), dtype=torch.int, device=config.device)
-        self.TDist = torch.from_numpy(np.expand_dims(range(config.t_size), -1)).to(config.device).long()#.squeeze(-1)
-
+        self.TDist = torch.from_numpy(np.expand_dims(range(config.t_size), -1)).to(config.device).long()
         self.trpe = nn.Embedding(config.t_size, config.d)
-
 
             
     def forward(self):

@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Oct  7 22:30:55 2021
-
-
-@author: Yiji Zhao
-
+@author: Yiji Zhao, Haomin Wen
 """
 
 import sys
@@ -18,17 +14,13 @@ from easydict import EasyDict as edict
 from timeit import default_timer as timer
 
 
-
-
-
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
 
 from STPGCN_pytorch import Model
 
-# os.environ["MXNET_CUDNN_AUTOTUNE_DEFAULT"] = "0"
-# os.environ["MXNET_CUDA_LIB_CHECKING"] = "0"
+
 
 def mask_np(array, null_val):
     if np.isnan(null_val):
@@ -414,7 +406,7 @@ def main(config):
         if metrics_val.best_metrics['epoch'] == epoch:
             if epoch>30:
                 params_filename = config.PATH_MOD+f"BestVal-{config.rid}_{config.model.name}.params"
-                model.save_parameters(params_filename)
+                torch.save(model.state_dict(), params_filename)
             # Testing
             evals(model, config.data.test_loader, epoch, metrics_test, config=config.model, mode='Test')
         else:
